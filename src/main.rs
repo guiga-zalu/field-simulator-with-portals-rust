@@ -74,26 +74,15 @@ static SUB_GRAVITON: ParticleParameters = ParticleParameters::new(0.9, 64, 200);
 const FOLDER: &str = "output";
 
 #[inline]
-fn process_gravitons(
-    universe: &mut Universe,
-    direction_graviton: Point,
-    // i: u32,
-) {
+fn process_gravitons(universe: &mut Universe, direction_graviton: Point) {
     for y in 0..universe.height {
         for x in 0..universe.width {
             let element = universe[(x, y)].element().unwrap();
             let mass = element.mass.value;
-            // println!("Mass: {}", mass);
             if !mass.is_normal() {
                 continue;
             }
-            for_each_mass_point(
-                universe,
-                (x, y),
-                direction_graviton,
-                mass,
-                // i,
-            );
+            for_each_mass_point(universe, (x, y), direction_graviton, mass);
         }
     }
 }
@@ -105,58 +94,24 @@ fn for_each_mass_point(
     position: (u32, u32),
     dir_graviton: Point,
     mass: f64,
-    // i: u32,
 ) {
     let mut dir_graviton = dir_graviton * GRAVITON.step_size;
-    // println!("Position: {}/{}", position.0, position.1);
     let mut position = Point {
         x: position.0 as f64,
         y: position.1 as f64,
     };
     let mass = mass / SUB_GRAVITON.quantity as f64;
     for _age in 0..GRAVITON.life_span {
-        // println!("Graviton #{}, age {}", i, _age);
         if !position.is_inside(universe) {
-            // eprintln!("ERROR: Graviton #{}, age {} is out of bounds", i, _age);
-            // dbg!(position);
-            // dbg!(dir_graviton);
             return;
         }
         for _subgrv_idx in 0..SUB_GRAVITON.quantity {
-            // if _age == 100 && _subgrv_idx == 15 {
-            //     println!("\tSub-graviton #{}", _subgrv_idx);
-            //     // universe_to_image(&universe.section(
-            //     //     universe.width * 3 / 5,
-            //     //     universe.height * 1 / 4,
-            //     //     universe.width * 2 / 5,
-            //     //     universe.height * 2 / 4,
-            //     // ))
-            //     // .save(format!(
-            //     //     "output/tmp/Grv {:04} - age {:04} = SubGrv {:04}.png",
-            //     //     i, _age, _subgrv_idx
-            //     // ))
-            //     // .unwrap();
-            // }
             let direction_sub_graviton =
                 Point::from_angle(TAU * _subgrv_idx as f64 / SUB_GRAVITON.quantity as f64);
-            process_sub_graviton(
-                universe,
-                position,
-                direction_sub_graviton,
-                mass,
-                // i,
-                // _age,
-                // _subgrv_idx,
-            );
+            process_sub_graviton(universe, position, direction_sub_graviton, mass);
         }
         // Advance graviton's position
-        (position, dir_graviton) =
-            universe.move_in_universe(position, dir_graviton /* , false*/);
-        // if _age == 100 {
-        //     universe_to_image(universe)
-        //         .save(format!("output/tmp/Grv {:04} - age {:04}.png", i, _age))
-        //         .unwrap();
-        // }
+        (position, dir_graviton) = universe.move_in_universe(position, dir_graviton);
     }
 }
 
@@ -166,48 +121,15 @@ fn process_sub_graviton(
     position: Point,
     dir_sub_graviton: Point,
     mass: f64,
-    // grv_idx: u32,
-    // grv_age: u32,
-    // subgrv_idx: u32,
 ) {
     let mut position = position;
     let mut dir_sub_graviton = dir_sub_graviton * SUB_GRAVITON.step_size;
     for _age in 0..SUB_GRAVITON.life_span {
-        // let test = grv_idx == 0 && grv_age == 3 && subgrv_idx == 0 && _age > 165 && _age < 170;
         if !position.is_inside(universe) {
-            // eprintln!(
-            //     "ERROR: Sub-graviton #{}, age {} is out of bounds",
-            //     subgrv_idx, _age
-            // );
-            // dbg!(position);
-            // dbg!(dir_sub_graviton);
             return;
         }
         let element = universe.get_from_point_mut(position).unwrap();
-        // element.mass.field -= dir_sub_graviton * mass * if test { 120.0 } else { 1.0 };
         element.mass.field -= dir_sub_graviton * mass;
-        // if test {
-        //     println!(
-        //         "Grv {:04} - age {:04} = SubGrv {:04} - age {:04}",
-        //         grv_idx, grv_age, subgrv_idx, _age
-        //     );
-        //     let img = &universe.to_image().crop_imm(
-        //         universe.width * 7 / 10,
-        //         universe.height * 2 / 5,
-        //         universe.width * 1 / 10,
-        //         universe.height * 1 / 10,
-        //     );
-        //     img.resize(
-        //         img.width() << 2,
-        //         img.height() << 2,
-        //         image::imageops::FilterType::Nearest,
-        //     )
-        //     .save(format!(
-        //         "output/tmp/Grv {:04} - age {:04} = SubGrv {:04} - age {:04}.png",
-        //         grv_idx, grv_age, subgrv_idx, _age
-        //     ))
-        //     .unwrap();
-        // }
         // Advance sub-graviton's position
         (position, dir_sub_graviton) =
             universe.move_in_universe(position, dir_sub_graviton /* , test*/);

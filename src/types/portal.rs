@@ -133,11 +133,6 @@ impl PortalSet {
         = [ Bx Ay - By Ax ] / [ Ay - By ]
         */
 
-        // We want x in [0; 1]
-
-        // x = - b / a = before.x - before.y / a = before.x - before.y * (before.x - after.x) / (before.y - after.y)
-
-        // before.y == after.y <=> before.y * after.y >= 0.0, a case already discarded.
         let (being_crossed, exiting): (Portal, Portal) = {
             let [before_a, before_b] = self.relative_positions(point);
             let [after_a, after_b] = self.relative_positions(point + movement);
@@ -174,11 +169,6 @@ impl PortalSet {
         let before = being_crossed.relative_position(point);
         let after = being_crossed.relative_position(point + movement);
         let x = (before.x * after.y - before.y * after.x) / (after.y - before.y);
-        // if test {
-        //     dbg!(before);
-        //     dbg!(after);
-        //     dbg!(x);
-        // }
         // We want x in [0; 1]
         if x < 0.0 || x > 1.0 {
             // Not being crossed.
@@ -187,10 +177,6 @@ impl PortalSet {
         let reprojected = exiting.reverted_relative_position(after);
         let movement = movement * (exiting.point_b - exiting.point_a)
             / (being_crossed.point_b - being_crossed.point_a);
-        // if test {
-        //     dbg!(reprojected);
-        //     dbg!(movement);
-        // }
         return Some((reprojected, movement));
     }
 }

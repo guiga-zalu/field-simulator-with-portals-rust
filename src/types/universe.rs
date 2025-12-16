@@ -24,10 +24,6 @@ impl Universe {
         }
     }
 
-    // pub fn count(&self) -> usize {
-    //     self.data.iter().map(|e| e.count()).sum()
-    // }
-
     pub fn get_from_point(&self, point: Point) -> Option<Element> {
         if !point.is_inside(self) {
             return None;
@@ -45,37 +41,10 @@ impl Universe {
         self.portals.push(portal);
     }
 
-    pub fn move_in_universe(
-        &self,
-        point: Point,
-        movement: Point,
-        // test: bool,
-    ) -> (Point, Point) {
-        // let mut closest_portalset = None;
-        // let mut min_distance = f64::MAX;
-        // for portalset in self.portals.iter() {
-        //     let distance = portalset.signed_distances(point);
-        //     if distance[0].abs() < min_distance {
-        //         closest_portalset = Some(portalset);
-        //         min_distance = distance[0];
-        //     }
-        //     if distance[1].abs() < min_distance {
-        //         closest_portalset = Some(portalset);
-        //         min_distance = distance[1];
-        //     }
-        // }
-        // if let Some(portalset) = closest_portalset {
-        //     portalset
-        //         .cross(point, movement)
-        //         .unwrap_or_else(|| point + movement)
-        // } else {
-        //     point + movement
-        // }
-        let cross = self.portals[0].cross(point, movement /* , test*/);
-        // if test {
-        //     dbg!(cross);
-        // }
-        cross.unwrap_or_else(|| (point + movement, movement))
+    pub fn move_in_universe(&self, point: Point, movement: Point) -> (Point, Point) {
+        self.portals[0]
+            .cross(point, movement)
+            .unwrap_or_else(|| (point + movement, movement))
     }
 
     pub fn section(&self, x: u32, y: u32, width: u32, height: u32) -> Universe {
@@ -162,12 +131,8 @@ impl Universe {
             let field = element.mass.field;
             let mag = field.magnitude();
             let r = (mag * 255.0) as u8;
-            let g = ((field.x + 1.0) * K) as u8;
-            let b = ((field.y + 1.0) * K) as u8;
-            // if r < 2 {
-            //     g >>= 1;
-            //     b >>= 1;
-            // }
+            let g = ((field.x + 1.0) * K * mag) as u8;
+            let b = ((field.y + 1.0) * K * mag) as u8;
             if *pixel == PORTAL_COLOUR {
                 let colour = Rgb([
                     r as f64 + pixel.0[0] as f64,
