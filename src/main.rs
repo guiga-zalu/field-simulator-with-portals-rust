@@ -10,16 +10,21 @@ fn main() {
     const HEIGHT: u32 = 1080 - 1;
     let mut universe = Universe::new(WIDTH, HEIGHT);
 
-    let center = (universe.width >> 1, universe.height >> 1);
-    universe[center].element_mut().unwrap().mass.value = 1.0;
+    let center = Point {
+        x: universe.width as f64 / 2.0,
+        y: universe.height as f64 / 2.0,
+    };
+    let t = (WIDTH as f64 * 0.125) as u32;
+    universe[(t, HEIGHT >> 1)].element_mut().unwrap().mass.value = 1.0;
+    universe[(WIDTH - t, HEIGHT >> 1)]
+        .element_mut()
+        .unwrap()
+        .mass
+        .value = 1.0;
 
     let portalset = {
         let delta = universe.width as f64 / 4.0;
         let portal_height = universe.height as f64 / 2.0;
-        let center = Point {
-            x: universe.width as f64 / 2.0,
-            y: universe.height as f64 / 2.0,
-        };
         PortalSet::new(
             Portal::new(
                 center + (-delta, -portal_height / 2.0),
@@ -45,10 +50,12 @@ fn main() {
         let direction_graviton = Point::from_angle(TAU * i as f64 / GRAVITON.quantity as f64);
         process_gravitons(&mut universe, direction_graviton /* , i*/);
         // return;
+        // if i == GRAVITON.quantity - 1 {
         universe
             .to_image()
             .save(format!("{}/{:04}.png", FOLDER, i + 1))
             .unwrap();
+        // }
     }
 }
 
@@ -69,8 +76,8 @@ impl ParticleParameters {
     }
 }
 
-static GRAVITON: ParticleParameters = ParticleParameters::new(1.1, 256, 800);
-static SUB_GRAVITON: ParticleParameters = ParticleParameters::new(0.9, 64, 200);
+static GRAVITON: ParticleParameters = ParticleParameters::new(1.5, 256, 800);
+static SUB_GRAVITON: ParticleParameters = ParticleParameters::new(0.9, 256, 800);
 const FOLDER: &str = "output";
 
 #[inline]

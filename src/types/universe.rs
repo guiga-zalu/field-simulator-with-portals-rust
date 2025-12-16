@@ -128,9 +128,9 @@ impl Universe {
         //* Draw field(s)
         img.par_enumerate_pixels_mut().for_each(|(x, y, pixel)| {
             let element = universe[(x, y)].element().unwrap();
-            let field = element.mass.field;
+            let field = element.mass.field.direction();
             let mag = field.magnitude();
-            let r = (mag * 255.0) as u8;
+            let r = (field.magnitude() * 255.0) as u8;
             let g = ((field.x + 1.0) * K * mag) as u8;
             let b = ((field.y + 1.0) * K * mag) as u8;
             if *pixel == PORTAL_COLOUR {
