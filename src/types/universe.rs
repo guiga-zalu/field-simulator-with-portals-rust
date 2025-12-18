@@ -2,6 +2,7 @@ use super::{Element, Point, Region, Regions, portal::PortalSet};
 
 use std::ops::{Index, IndexMut};
 
+use colorgrad::Gradient;
 use image::{DynamicImage, ImageBuffer, Rgb};
 use rayon::prelude::*;
 
@@ -74,7 +75,7 @@ impl Universe {
     fn normalize(&self) -> Universe {
         let mut mass_min = f64::MAX;
         let mut mass_max = f64::MIN;
-        let mut mass_field_max = f64::MIN;
+        let mut mass_field_mag_max = f64::MIN;
         for y in 0..self.height {
             for x in 0..self.width {
                 let element = self[(x, y)].element().unwrap();
@@ -82,7 +83,7 @@ impl Universe {
                 mass_min = mass_min.min(mass);
                 mass_max = mass_max.max(mass);
                 let mag = element.mass.field.magnitude();
-                mass_field_max = mass_field_max.max(mag);
+                mass_field_mag_max = mass_field_mag_max.max(mag);
             }
         }
         let mut new = self.clone();
@@ -91,7 +92,7 @@ impl Universe {
                 let mut element = new[(x, y)].element().unwrap();
                 let mass = element.mass.value;
                 element.mass.value = (mass - mass_min) / (mass_max - mass_min);
-                element.mass.field /= mass_field_max;
+                element.mass.field /= mass_field_mag_max;
                 new[(x, y)] = Region::Element(element);
             }
         }
@@ -99,7 +100,6 @@ impl Universe {
     }
     pub fn to_image(&self) -> DynamicImage {
         let universe = self.normalize();
-        const K: f64 = 255.0 / 2.0;
         //* Create image
         let mut img = ImageBuffer::new(universe.width, universe.height);
         //* Draw portals
@@ -126,22 +126,20 @@ impl Universe {
             draw_line(&mut img, b.point_a + plus, b.point_b + plus, PORTAL_COLOUR);
         }
         //* Draw field(s)
+        let gradient = colorgrad::preset::viridis();
         img.par_enumerate_pixels_mut().for_each(|(x, y, pixel)| {
             let element = universe[(x, y)].element().unwrap();
-            let field = element.mass.field.direction();
+            let field = element.mass.field;
             let mag = field.magnitude();
-            const N: u8 = 5u8;
-            let r = ((field.magnitude() * 255.0) as u8 >> N) << N;
-            let g = (((field.x + 1.0) * K * mag) as u8 >> N) << N;
-            let b = (((field.y + 1.0) * K * mag) as u8 >> N) << N;
+
+            let [r, g, b, ..] = gradient.at(mag as f32).to_rgba8();
+
             if *pixel == PORTAL_COLOUR {
-                let colour = Rgb([
-                    r as f64 + pixel.0[0] as f64,
-                    g as f64 + pixel.0[1] as f64,
-                    b as f64 + pixel.0[2] as f64,
-                ]
-                .map(|v| (v / 2.0) as u8));
-                *pixel = colour;
+                *pixel = Rgb([
+                    ((r as f64 + pixel.0[0] as f64) * 0.5) as u8,
+                    ((g as f64 + pixel.0[1] as f64) * 0.5) as u8,
+                    ((b as f64 + pixel.0[2] as f64) * 0.5) as u8,
+                ]);
             } else {
                 *pixel = Rgb([r, g, b]);
             }
