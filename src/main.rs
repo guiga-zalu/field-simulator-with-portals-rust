@@ -1,7 +1,7 @@
 mod types;
 use types::*;
 
-use std::f64::consts::TAU;
+use std::{f64::consts::TAU, fs::remove_dir_all, process::Command};
 
 fn main() {
     const WIDTH: u32 = 1080 - 1;
@@ -40,18 +40,39 @@ fn main() {
     );
     universe.add_portal_set(portalset);
 
+    //* Remove previous images
+    remove_dir_all(FOLDER).expect("Failed to remove previous images");
+
+    //* Run simulation
     universe
         .to_image()
         .save(format!("{}/{:04}.png", FOLDER, 0))
-        .unwrap();
+        .expect("Failed to save image");
     for i in 0..GRAVITON.quantity {
         let direction_graviton = Point::from_angle(TAU * i as f64 / GRAVITON.quantity as f64);
         process_gravitons(&mut universe, direction_graviton /* , i*/);
         universe
             .to_image()
             .save(format!("{}/{:04}.png", FOLDER, i + 1))
-            .unwrap();
+            .expect("Failed to save image");
     }
+
+    //* Join images into video
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args([
+        "-framerate",
+        "30",
+        "-i",
+        &format!("{FOLDER}/%04d.png"),
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-vf",
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        "output.mp4",
+    ]);
+    cmd.output().expect("Failed to join images into video");
 }
 
 pub struct ParticleParameters {
