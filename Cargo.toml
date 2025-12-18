@@ -6,3 +6,13 @@ edition = "2024"
 [dependencies]
 image = "0.25.9"
 rayon = "1.11.0"
+
+[dependencies.colorgrad]
+version = "0.8.0"
+features = [
+    "std",
+    "ggr",
+    "lab",
+    "named-colors",
+    "preset",
+]

@@ -3,8 +3,6 @@ use types::*;
 
 use std::f64::consts::TAU;
 
-// use image::{GenericImage, Rgba};
-
 fn main() {
     const WIDTH: u32 = 1080 - 1;
     const HEIGHT: u32 = 1080 - 1;
@@ -49,13 +47,10 @@ fn main() {
     for i in 0..GRAVITON.quantity {
         let direction_graviton = Point::from_angle(TAU * i as f64 / GRAVITON.quantity as f64);
         process_gravitons(&mut universe, direction_graviton /* , i*/);
-        // return;
-        // if i == GRAVITON.quantity - 1 {
         universe
             .to_image()
             .save(format!("{}/{:04}.png", FOLDER, i + 1))
             .unwrap();
-        // }
     }
 }
 
@@ -76,8 +71,8 @@ impl ParticleParameters {
     }
 }
 
-static GRAVITON: ParticleParameters = ParticleParameters::new(1.5, 256, 800);
-static SUB_GRAVITON: ParticleParameters = ParticleParameters::new(0.9, 256, 800);
+static GRAVITON: ParticleParameters = ParticleParameters::new(1.8, 256, 800);
+static SUB_GRAVITON: ParticleParameters = ParticleParameters::new(0.9, 256, 600);
 const FOLDER: &str = "output";
 
 #[inline]

@@ -130,9 +130,10 @@ impl Universe {
             let element = universe[(x, y)].element().unwrap();
             let field = element.mass.field.direction();
             let mag = field.magnitude();
-            let r = (field.magnitude() * 255.0) as u8;
-            let g = ((field.x + 1.0) * K * mag) as u8;
-            let b = ((field.y + 1.0) * K * mag) as u8;
+            const N: u8 = 5u8;
+            let r = ((field.magnitude() * 255.0) as u8 >> N) << N;
+            let g = (((field.x + 1.0) * K * mag) as u8 >> N) << N;
+            let b = (((field.y + 1.0) * K * mag) as u8 >> N) << N;
             if *pixel == PORTAL_COLOUR {
                 let colour = Rgb([
                     r as f64 + pixel.0[0] as f64,
