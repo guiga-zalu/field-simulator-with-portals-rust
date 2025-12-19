@@ -1,24 +1,38 @@
 mod types;
 use types::*;
 
-use std::{f64::consts::TAU, fs::remove_dir_all, process::Command};
+use std::{f64::consts::TAU, fs, process::Command};
 
 fn main() {
+    //* Preparating simulation universe
+    println!("Preparating simulation universe...");
     const WIDTH: u32 = 1080 - 1;
     const HEIGHT: u32 = 1080 - 1;
+    const OBJECT_RADIUS: f64 = 4.0;
     let mut universe = Universe::new(WIDTH, HEIGHT);
 
     let center = Point {
         x: universe.width as f64 / 2.0,
         y: universe.height as f64 / 2.0,
     };
-    let t = (WIDTH as f64 * 0.125) as u32;
-    universe[(t, HEIGHT >> 1)].element_mut().unwrap().mass.value = 1.0;
-    universe[(WIDTH - t, HEIGHT >> 1)]
-        .element_mut()
-        .unwrap()
-        .mass
-        .value = 1.0;
+    //? Two masses.
+    // let t = (WIDTH as f64 * 0.125) as u32;
+    // universe[(t, HEIGHT >> 1)].element_mut().unwrap().mass.value = 1.0;
+    // universe[(WIDTH - t, HEIGHT >> 1)]
+    //     .element_mut()
+    //     .unwrap()
+    //     .mass
+    //     .value = 1.0;
+    //? Circle with mass
+    for y in (-OBJECT_RADIUS) as i64..=OBJECT_RADIUS as i64 {
+        for x in (-OBJECT_RADIUS) as i64..=OBJECT_RADIUS as i64 {
+            if (x as f64).hypot(y as f64) <= OBJECT_RADIUS {
+                let x = (center.x as i64 + x as i64) as u32;
+                let y = (center.y as i64 + y as i64) as u32;
+                universe[(x, y)].element_mut().unwrap().mass.value = 1.0;
+            }
+        }
+    }
 
     let portalset = {
         let delta = universe.width as f64 / 4.0;
@@ -34,23 +48,35 @@ fn main() {
             ),
         )
     };
-    println!(
-        "Portalset {{ {} - {} <-> {} - {} }}",
-        portalset.a.point_a, portalset.a.point_b, portalset.b.point_a, portalset.b.point_b
-    );
+    // println!(
+    //     "Portalset {{ {} - {} <-> {} - {} }}",
+    //     portalset.a.point_a, portalset.a.point_b, portalset.b.point_a, portalset.b.point_b
+    // );
     universe.add_portal_set(portalset);
 
     //* Remove previous images
-    remove_dir_all(FOLDER).expect("Failed to remove previous images");
+    println!("Clearing previous images");
+    match fs::exists(FOLDER) {
+        Ok(true) => {
+            for f in fs::read_dir(FOLDER).unwrap() {
+                let path = f.unwrap().path();
+                if path.extension().unwrap() == "png" {
+                    fs::remove_file(path).unwrap();
+                }
+            }
+        }
+        _ => fs::create_dir_all(FOLDER).expect("Failed to create directory"),
+    };
 
     //* Run simulation
+    println!("Running simulation");
     universe
         .to_image()
         .save(format!("{}/{:04}.png", FOLDER, 0))
         .expect("Failed to save image");
     for i in 0..GRAVITON.quantity {
         let direction_graviton = Point::from_angle(TAU * i as f64 / GRAVITON.quantity as f64);
-        process_gravitons(&mut universe, direction_graviton /* , i*/);
+        process_gravitons(&mut universe, direction_graviton);
         universe
             .to_image()
             .save(format!("{}/{:04}.png", FOLDER, i + 1))
@@ -58,6 +84,7 @@ fn main() {
     }
 
     //* Join images into video
+    println!("Joining images into video");
     let mut cmd = Command::new("ffmpeg");
     cmd.args([
         "-framerate",
@@ -69,7 +96,7 @@ fn main() {
         "-pix_fmt",
         "yuv420p",
         "-vf",
-        "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        "\"scale=trunc(iw/2)*2:trunc(ih/2)*2\"",
         "output.mp4",
     ]);
     cmd.output().expect("Failed to join images into video");
@@ -92,8 +119,8 @@ impl ParticleParameters {
     }
 }
 
-static GRAVITON: ParticleParameters = ParticleParameters::new(1.8, 256, 800);
-static SUB_GRAVITON: ParticleParameters = ParticleParameters::new(0.9, 256, 600);
+static GRAVITON: ParticleParameters = ParticleParameters::new(1.8, 64, 800);
+static SUB_GRAVITON: ParticleParameters = ParticleParameters::new(0.9, 64, 600);
 const FOLDER: &str = "output";
 
 #[inline]
