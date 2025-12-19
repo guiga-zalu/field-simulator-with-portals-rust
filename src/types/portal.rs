@@ -111,9 +111,9 @@ impl PortalSet {
     pub fn cross(
         &self,
         point: Point,
+        speed: Point,
         movement: Point,
-        //test: bool,
-    ) -> Option<(Point, Point)> {
+    ) -> Option<(Point, Point, Point)> {
         /*
         (x1, y1) := (0, 0)
         (x2, y2) := (1, 0)
@@ -166,6 +166,8 @@ impl PortalSet {
                 }
             }
         };
+
+        //* {space = entry portal}
         let before = being_crossed.relative_position(point);
         let after = being_crossed.relative_position(point + movement);
         let x = (before.x * after.y - before.y * after.x) / (after.y - before.y);
@@ -174,9 +176,17 @@ impl PortalSet {
             // Not being crossed.
             return None;
         }
-        let reprojected = exiting.reverted_relative_position(after);
-        let movement = movement * (exiting.point_b - exiting.point_a)
-            / (being_crossed.point_b - being_crossed.point_a);
-        return Some((reprojected, movement));
+        let crossing_point = Point::by_x(x);
+        let yet_to_move = after - crossing_point;
+
+        //* {space = real space}
+        let reprojected = exiting.reverted_relative_position(crossing_point);
+        let projection_entry_to_exit =
+            (exiting.point_b - exiting.point_a) / (being_crossed.point_b - being_crossed.point_a);
+        let speed = speed * projection_entry_to_exit;
+        // {space = entry portal}
+        // remaining := after - crossing point
+        let yet_to_move = exiting.reverted_relative_position(yet_to_move);
+        return Some((reprojected, speed, yet_to_move));
     }
 }

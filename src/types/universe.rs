@@ -42,10 +42,23 @@ impl Universe {
         self.portals.push(portal);
     }
 
-    pub fn move_in_universe(&self, point: Point, movement: Point) -> (Point, Point) {
-        self.portals[0]
-            .cross(point, movement)
-            .unwrap_or_else(|| (point + movement, movement))
+    /// TODO: test multiple portal sets
+    pub fn move_in_universe(&self, point: Point, speed: Point) -> (Point, Point) {
+        let mut point = point;
+        let mut speed = speed;
+        let mut yet_to_move: Point = speed;
+        loop {
+            let cross = self.portals[0].cross(point, speed, yet_to_move);
+            if cross.is_none() {
+                return (point + speed, speed);
+            }
+            (point, speed, yet_to_move) = cross.unwrap();
+            if yet_to_move.magnitude_2() <= 1.0 {
+                point += yet_to_move;
+                break;
+            }
+        }
+        (point, speed)
     }
 
     pub fn section(&self, x: u32, y: u32, width: u32, height: u32) -> Universe {
