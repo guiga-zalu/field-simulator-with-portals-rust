@@ -10,6 +10,14 @@ pub struct Point {
 }
 
 impl Point {
+    pub fn by_x(x: f64) -> Point {
+        Point { x, y: 0.0 }
+    }
+
+    pub fn by_y(y: f64) -> Point {
+        Point { x: 0.0, y }
+    }
+
     pub fn from_angle(angle: f64) -> Point {
         Point {
             x: angle.cos(),
