@@ -1,3 +1,4 @@
+#![allow(clippy::suspicious_arithmetic_impl)]
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign},

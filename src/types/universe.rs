@@ -179,29 +179,28 @@ fn draw_line<Pixel: image::Pixel, Container: Deref<Target = [Pixel::Subpixel]> +
     let dy = y1 - y0;
 
     if dy < dx {
-        if x0 < x1 {
-            draw_line_low(img, start, end, color);
-        } else {
-            draw_line_low(img, end, start, color);
-        }
+        draw_line_low(
+            img,
+            if x0 < x1 { (start, end) } else { (end, start) },
+            color,
+        );
     } else {
-        if y0 < y1 {
-            draw_line_high(img, start, end, color);
-        } else {
-            draw_line_high(img, end, start, color);
-        }
+        draw_line_high(
+            img,
+            if y0 < y1 { (start, end) } else { (end, start) },
+            color,
+        );
     }
 }
 
 #[inline]
 fn draw_line_low<Pixel: image::Pixel, Container: Deref<Target = [Pixel::Subpixel]> + DerefMut>(
     img: &mut ImageBuffer<Pixel, Container>,
-    start: Point,
-    end: Point,
+    path: (Point, Point),
     color: Pixel,
 ) {
-    let Point { x: x0, y: y0 } = start;
-    let Point { x: x1, y: y1 } = end;
+    let Point { x: x0, y: y0 } = path.0;
+    let Point { x: x1, y: y1 } = path.1;
     let dx = x1 - x0;
     let dy = y1 - y0;
     let mut d = 2.0 * dy - dx;
@@ -209,7 +208,9 @@ fn draw_line_low<Pixel: image::Pixel, Container: Deref<Target = [Pixel::Subpixel
 
     if dy > 0.0 {
         for x in x0.round() as u32..=x1.round() as u32 {
-            img.get_pixel_mut_checked(x, y).map(|p| *p = color);
+            if let Some(p) = img.get_pixel_mut_checked(x, y) {
+                *p = color;
+            }
             if d > 0.0 {
                 y += 1;
                 d += 2.0 * (dy - dx);
@@ -219,7 +220,9 @@ fn draw_line_low<Pixel: image::Pixel, Container: Deref<Target = [Pixel::Subpixel
     } else {
         let dy = dy.abs();
         for x in x0.round() as u32..=x1.round() as u32 {
-            img.get_pixel_mut_checked(x, y).map(|p| *p = color);
+            if let Some(p) = img.get_pixel_mut_checked(x, y) {
+                *p = color;
+            }
             if d > 0.0 {
                 y -= 1;
                 d += 2.0 * (dy - dx);
@@ -232,12 +235,11 @@ fn draw_line_low<Pixel: image::Pixel, Container: Deref<Target = [Pixel::Subpixel
 #[inline]
 fn draw_line_high<Pixel: image::Pixel, Container: Deref<Target = [Pixel::Subpixel]> + DerefMut>(
     img: &mut ImageBuffer<Pixel, Container>,
-    start: Point,
-    end: Point,
+    path: (Point, Point),
     color: Pixel,
 ) {
-    let Point { x: x0, y: y0 } = start;
-    let Point { x: x1, y: y1 } = end;
+    let Point { x: x0, y: y0 } = path.0;
+    let Point { x: x1, y: y1 } = path.1;
     let dx = x1 - x0;
     let dy = y1 - y0;
     let mut d = 2.0 * dx - dy;
@@ -245,7 +247,9 @@ fn draw_line_high<Pixel: image::Pixel, Container: Deref<Target = [Pixel::Subpixe
 
     if dx > 0.0 {
         for y in y0.round() as u32..=y1.round() as u32 {
-            img.get_pixel_mut_checked(x, y).map(|p| *p = color);
+            if let Some(p) = img.get_pixel_mut_checked(x, y) {
+                *p = color;
+            }
             if d > 0.0 {
                 x += 1;
                 d += 2.0 * (dx - dy);
@@ -255,7 +259,9 @@ fn draw_line_high<Pixel: image::Pixel, Container: Deref<Target = [Pixel::Subpixe
     } else {
         let dx = dx.abs();
         for y in y0.round() as u32..=y1.round() as u32 {
-            img.get_pixel_mut_checked(x, y).map(|p| *p = color);
+            if let Some(p) = img.get_pixel_mut_checked(x, y) {
+                *p = color;
+            }
             if d > 0.0 {
                 x -= 1;
                 d += 2.0 * (dx - dy);

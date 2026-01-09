@@ -75,7 +75,7 @@ impl Portal {
         self.relative_position(point).y
     }
 
-    pub(crate) fn into_complex_polar(&self) -> ComplexPolar {
+    pub(crate) fn into_complex_polar(self) -> ComplexPolar {
         let delta = self.point_b - self.point_a;
         delta.into()
     }
@@ -172,7 +172,7 @@ impl PortalSet {
         let after = being_crossed.relative_position(point + movement);
         let x = (before.x * after.y - before.y * after.x) / (after.y - before.y);
         // We want x in [0; 1]
-        if x < 0.0 || x > 1.0 {
+        if !(0.0..1.0).contains(&x) {
             // Not being crossed.
             return None;
         }
@@ -187,6 +187,6 @@ impl PortalSet {
         // {space = entry portal}
         // remaining := after - crossing point
         let yet_to_move = exiting.reverted_relative_position(yet_to_move);
-        return Some((reprojected, speed, yet_to_move));
+        Some((reprojected, speed, yet_to_move))
     }
 }

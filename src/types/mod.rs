@@ -70,7 +70,7 @@ impl Point {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-struct Particle {
+pub struct Particle {
     pub position: Point,
     pub speed: Point,
     pub value: f64,
