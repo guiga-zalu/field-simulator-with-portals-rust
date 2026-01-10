@@ -68,12 +68,12 @@ impl Portal {
         point * (self.point_b - self.point_a) + self.point_a
     }
 
-    pub fn signed_distance(&self, point: Point) -> f64 {
-        // Portal = [Point; 2] -> line
-        // line -- T --> Ox
-        // T(point).y
-        self.relative_position(point).y
-    }
+    // pub fn signed_distance(&self, point: Point) -> f64 {
+    //     // Portal = [Point; 2] -> line
+    //     // line -- T --> Ox
+    //     // T(point).y
+    //     self.relative_position(point).y
+    // }
 
     pub(crate) fn into_complex_polar(self) -> ComplexPolar {
         let delta = self.point_b - self.point_a;
@@ -92,6 +92,7 @@ impl PortalSet {
         PortalSet { a, b }
     }
 
+    #[allow(dead_code)]
     pub fn sizes(&self) -> [f64; 2] {
         [self.a.size(), self.b.size()]
     }
@@ -103,9 +104,9 @@ impl PortalSet {
         ]
     }
 
-    pub fn signed_distances(&self, point: Point) -> [f64; 2] {
-        [self.a.signed_distance(point), self.b.signed_distance(point)]
-    }
+    // pub fn signed_distances(&self, point: Point) -> [f64; 2] {
+    //     [self.a.signed_distance(point), self.b.signed_distance(point)]
+    // }
 
     /// https://en.wikipedia.org/wiki/Line%E2%80%93line_intersection#Given_two_points_on_each_line
     pub fn cross(
@@ -188,5 +189,16 @@ impl PortalSet {
         // remaining := after - crossing point
         let yet_to_move = exiting.reverted_relative_position(yet_to_move);
         Some((reprojected, speed, yet_to_move))
+    }
+}
+
+impl From<(Portal, Portal)> for PortalSet {
+    fn from(value: (Portal, Portal)) -> Self {
+        PortalSet::new(value.0, value.1)
+    }
+}
+impl From<[Portal; 2]> for PortalSet {
+    fn from(value: [Portal; 2]) -> Self {
+        PortalSet::new(value[0], value[1])
     }
 }

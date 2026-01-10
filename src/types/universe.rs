@@ -1,4 +1,4 @@
-use super::{Element, Point, Region, Regions, portal::PortalSet};
+use super::{Element, Point, Region, Regions, Scale, portal::PortalSet};
 
 use std::ops::{Index, IndexMut};
 
@@ -7,48 +7,125 @@ use image::{DynamicImage, ImageBuffer, Rgb};
 use rayon::prelude::*;
 
 #[derive(Debug, Clone, Default)]
-pub struct Universe {
+pub struct UniverseData<T>
+where
+    T: Copy,
+{
     pub width: u32,
     pub height: u32,
-    portals: Vec<PortalSet>,
-    data: Regions,
+    pub regions: Regions<T>,
+}
+
+impl<T> UniverseData<T>
+where
+    T: Copy,
+{
+    pub fn get_from_point(&self, point: Point) -> Option<(Scale, T)> {
+        if !point.is_inside(self) {
+            return None;
+        }
+        let index = (point.y as u32 * self.width + point.x as u32) as usize;
+        self.regions[index].element()
+    }
+
+    pub fn get_from_point_mut(&mut self, point: Point) -> Option<(Scale, &mut T)> {
+        if !point.is_inside(self) {
+            return None;
+        }
+        let index = (point.y as u32 * self.width + point.x as u32) as usize;
+        self.regions[index].element_mut()
+    }
+
+    pub fn fill(&mut self, value: T) {
+        for region in self.regions.iter_mut() {
+            match region {
+                Region::Element(e) => *e = value,
+                // _ => (),
+            }
+        }
+    }
+
+    pub fn neighbouring_positions(&self, point: Point) -> Vec<Point> {
+        if let Some((scale, _)) = self.get_from_point(point) {
+            let mut positions = Vec::new();
+            for direction in NEIGHBOURING_DIRECTIONS.iter() {
+                let direction = point + *direction * scale.0;
+                if direction.is_inside(self) {
+                    positions.push(direction);
+                }
+            }
+            positions
+        } else {
+            Vec::new()
+        }
+    }
+}
+const NEIGHBOURING_DIRECTIONS: [Point; 8] = [
+    // Above
+    Point { x: -1.0, y: -1.0 },
+    Point { x: 0.0, y: -1.0 },
+    Point { x: 1.0, y: -1.0 },
+    // Sides
+    Point { x: -1.0, y: 0.0 },
+    Point { x: 1.0, y: 0.0 },
+    // Below
+    Point { x: -1.0, y: 1.0 },
+    Point { x: 0.0, y: 1.0 },
+    Point { x: 1.0, y: 1.0 },
+];
+
+#[derive(Debug, Clone, Default)]
+pub struct Universe {
+    portalsets: Vec<PortalSet>,
+    data: UniverseData<Element>,
 }
 
 impl Universe {
     pub fn new(width: u32, height: u32) -> Universe {
-        let data = vec![Default::default(); (width * height) as usize];
+        let regions = vec![Default::default(); (width * height) as usize];
         Universe {
-            width,
-            height,
-            data,
+            data: UniverseData {
+                width,
+                height,
+                regions,
+            },
             ..Default::default()
         }
     }
 
-    pub fn get_from_point(&self, point: Point) -> Option<Element> {
-        if !point.is_inside(self) {
-            return None;
-        }
-        self[(point.x as u32, point.y as u32)].element()
-    }
-    pub fn get_from_point_mut(&mut self, point: Point) -> Option<&mut Element> {
-        if !point.is_inside(self) {
-            return None;
-        }
-        self[(point.x as u32, point.y as u32)].element_mut()
+    #[inline(always)]
+    pub const fn width(&self) -> u32 {
+        self.data.width
     }
 
-    pub fn add_portal_set(&mut self, portal: PortalSet) {
-        self.portals.push(portal);
+    #[inline(always)]
+    pub const fn height(&self) -> u32 {
+        self.data.height
+    }
+
+    #[allow(dead_code)]
+    pub fn get_from_point(&self, point: Point) -> Option<(Scale, Element)> {
+        self.data.get_from_point(point)
+    }
+
+    #[allow(dead_code)]
+    pub fn get_from_point_mut(&mut self, point: Point) -> Option<(Scale, &mut Element)> {
+        self.data.get_from_point_mut(point)
+    }
+
+    pub fn fill(&mut self, value: Element) {
+        self.data.fill(value);
+    }
+
+    pub fn add_portal_set<PS: Into<PortalSet>>(&mut self, portalset: PS) {
+        self.portalsets.push(portalset.into());
     }
 
     /// TODO: test multiple portal sets
-    pub fn move_in_universe(&self, point: Point, speed: Point) -> (Point, Point) {
-        let mut point = point;
-        let mut speed = speed;
+    pub fn in_universe_move(&self, mut point: Point, mut speed: Point) -> (Point, Point) {
         let mut yet_to_move: Point = speed;
         loop {
-            let cross = self.portals[0].cross(point, speed, yet_to_move);
+            let cross = self.portalsets[0].cross(point, speed, yet_to_move);
             if cross.is_none() {
                 return (point + speed, speed);
             }
@@ -61,6 +138,24 @@ impl Universe {
         (point, speed)
     }
 
+    /// TODO: test multiple portal sets
+    pub fn in_universe_flood(&self, mut point: Point, mut field: Point) -> (Point, Point) {
+        let mut yet_to_move: Point = field;
+        loop {
+            let cross = self.portalsets[0].cross(point, field, yet_to_move);
+            if cross.is_none() {
+                return (point + field, field);
+            }
+            (point, field, yet_to_move) = cross.unwrap();
+            if yet_to_move.magnitude_2() <= 1.0 {
+                point += yet_to_move;
+                break;
+            }
+        }
+        (point, field)
+    }
+
+    #[allow(dead_code)]
     pub fn section(&self, x: u32, y: u32, width: u32, height: u32) -> Universe {
         let mut universe = Universe::new(width, height);
         for yi in 0..height {
@@ -73,14 +168,16 @@ impl Universe {
 }
 
 impl Index<(u32, u32)> for Universe {
-    type Output = Region;
-    fn index(&self, (x, y): (u32, u32)) -> &Region {
-        &self.data[(x + y * self.width) as usize]
+    type Output = Region<Element>;
+    fn index(&self, (x, y): (u32, u32)) -> &Region<Element> {
+        let width = self.width();
+        &self.data.regions[(x + y * width) as usize]
     }
 }
 impl IndexMut<(u32, u32)> for Universe {
-    fn index_mut(&mut self, (x, y): (u32, u32)) -> &mut Region {
-        &mut self.data[(x + y * self.width) as usize]
+    fn index_mut(&mut self, (x, y): (u32, u32)) -> &mut Region<Element> {
+        let width = self.width();
+        &mut self.data.regions[(x + y * width) as usize]
     }
 }
 
@@ -89,9 +186,9 @@ impl Universe {
         let mut mass_min = f64::MAX;
         let mut mass_max = f64::MIN;
         let mut mass_field_mag_max = f64::MIN;
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let element = self[(x, y)].element().unwrap();
+        for y in 0..self.height() {
+            for x in 0..self.width() {
+                let (.., element) = self[(x, y)].element().unwrap();
                 let mass = element.mass.value;
                 mass_min = mass_min.min(mass);
                 mass_max = mass_max.max(mass);
@@ -100,9 +197,9 @@ impl Universe {
             }
         }
         let mut new = self.clone();
-        for y in 0..new.height {
-            for x in 0..new.width {
-                let mut element = new[(x, y)].element().unwrap();
+        for y in 0..new.height() {
+            for x in 0..new.width() {
+                let (.., mut element) = new[(x, y)].element().unwrap();
                 let mass = element.mass.value;
                 element.mass.value = (mass - mass_min) / (mass_max - mass_min);
                 element.mass.field /= mass_field_mag_max;
@@ -114,12 +211,12 @@ impl Universe {
     pub fn to_image(&self) -> DynamicImage {
         let universe = self.normalize();
         //* Create image
-        let mut img = ImageBuffer::new(universe.width, universe.height);
+        let mut img = ImageBuffer::new(universe.width(), universe.height());
         //* Draw portals
         let minus = Point { x: -1.0, y: 0.0 };
         let plus = Point { x: 1.0, y: 0.0 };
         const PORTAL_COLOUR: Rgb<u8> = Rgb([192, 32, 32]);
-        for portalset in self.portals.iter() {
+        for portalset in self.portalsets.iter() {
             let PortalSet { a, b } = portalset;
             draw_line(&mut img, a.point_a, a.point_b, PORTAL_COLOUR);
             draw_line(
@@ -141,7 +238,7 @@ impl Universe {
         //* Draw field(s)
         let gradient = colorgrad::preset::viridis();
         img.par_enumerate_pixels_mut().for_each(|(x, y, pixel)| {
-            let element = universe[(x, y)].element().unwrap();
+            let (.., element) = universe[(x, y)].element().unwrap();
             let field = element.mass.field;
             let mag = field.magnitude();
 
@@ -267,6 +364,29 @@ fn draw_line_high<Pixel: image::Pixel, Container: Deref<Target = [Pixel::Subpixe
                 d += 2.0 * (dx - dy);
             }
             d += 2.0 * dx;
+        }
+    }
+}
+
+impl Universe {
+    pub fn field<T>(universe: &Self) -> UniverseData<T>
+    where
+        T: Copy + Default,
+    {
+        let original = &universe.data;
+        let mut regions = Vec::new();
+        for region in &original.regions {
+            match region {
+                Region::Element(_) => regions.push(Region::Element(Default::default())),
+                // Region::Subdivision(subdivision) => {
+                //     regions.push(Region::Subdivision(subdivision.clone()))
+                // }
+            }
+        }
+        UniverseData {
+            width: original.width,
+            height: original.height,
+            regions,
         }
     }
 }

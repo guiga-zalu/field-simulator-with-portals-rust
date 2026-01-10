@@ -3,8 +3,8 @@ mod portal;
 mod universe;
 pub use self::{
     point::Point,
-    portal::{Portal, PortalSet},
-    universe::Universe,
+    portal::Portal,
+    universe::{Universe, UniverseData},
 };
 
 #[derive(Debug, Clone, Default, Copy, PartialEq)]
@@ -18,29 +18,43 @@ pub struct Element {
     pub mass: Property,
 }
 
+pub struct Scale(pub f64);
+
 #[derive(Debug, Clone)]
-pub enum Region {
-    Element(Element),
-    // Subdivision(Regions),
+pub enum Region<T>
+where
+    T: Copy,
+{
+    Element(T),
+    // Subdivision {
+    //     scale: Scale,
+    //     regions: Regions,
+    // },
 }
 
-impl Default for Region {
-    fn default() -> Region {
+impl<T> Default for Region<T>
+where
+    T: Copy + Default,
+{
+    fn default() -> Region<T> {
         Region::Element(Default::default())
     }
 }
 
-impl Region {
-    pub fn element(&self) -> Option<Element> {
+impl<T> Region<T>
+where
+    T: Copy,
+{
+    pub fn element(&self) -> Option<(Scale, T)> {
         match self {
-            Region::Element(e) => Some(*e),
+            Region::Element(e) => Some((Scale(1.0), *e)),
             // _ => None,
         }
     }
 
-    pub fn element_mut(&mut self) -> Option<&mut Element> {
+    pub fn element_mut(&mut self) -> Option<(Scale, &mut T)> {
         match self {
-            Region::Element(e) => Some(e),
+            Region::Element(e) => Some((Scale(1.0), e)),
             // _ => None,
         }
     }
@@ -60,26 +74,57 @@ impl Region {
     // }
 }
 
-type Regions = Vec<Region>;
+type Regions<T> = Vec<Region<T>>;
+
+pub trait RegionBounds {
+    fn max_point(&self) -> Point;
+    fn contains(&self, point: &Point) -> bool {
+        let max_point = self.max_point();
+        (0.0..max_point.x).contains(&point.x) && (0.0..max_point.y).contains(&point.y)
+    }
+}
+
+impl<T> RegionBounds for UniverseData<T>
+where
+    T: Copy,
+{
+    fn max_point(&self) -> Point {
+        Point {
+            x: self.width as f64,
+            y: self.height as f64,
+        }
+    }
+}
+
+impl RegionBounds for Universe {
+    fn max_point(&self) -> Point {
+        Point {
+            x: self.width() as f64,
+            y: self.height() as f64,
+        }
+    }
+}
 
 impl Point {
-    pub fn is_inside(&self, universe: &Universe) -> bool {
-        (self.x >= 0.0 && self.x < universe.width as f64)
-            && (self.y >= 0.0 && self.y < universe.height as f64)
+    pub fn is_inside<Structure>(&self, structure: &Structure) -> bool
+    where
+        Structure: RegionBounds,
+    {
+        structure.contains(self)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Particle {
     pub position: Point,
-    pub speed: Point,
+    pub direction: Point,
     pub value: f64,
 }
 
 impl Particle {
     pub fn move_in_universe_mut(&mut self, universe: &Universe) {
-        let (position, speed) = universe.move_in_universe(self.position, self.speed);
+        let (position, speed) = universe.in_universe_move(self.position, self.direction);
         self.position = position;
-        self.speed = speed;
+        self.direction = speed;
     }
 }

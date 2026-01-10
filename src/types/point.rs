@@ -11,6 +11,10 @@ pub struct Point {
 }
 
 impl Point {
+    pub const fn zero() -> Point {
+        Point { x: 0.0, y: 0.0 }
+    }
+
     pub fn by_x(x: f64) -> Point {
         Point { x, y: 0.0 }
     }
