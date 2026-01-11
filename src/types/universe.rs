@@ -1,4 +1,9 @@
-use super::{Element, Point, Region, Regions, Scale, portal::PortalSet};
+use super::{
+    Element,
+    point::Point,
+    portal::PortalSet,
+    region::{Region, Regions, Scale},
+};
 
 use std::ops::{Index, IndexMut};
 
@@ -60,18 +65,14 @@ where
         }
     }
 }
-const NEIGHBOURING_DIRECTIONS: [Point; 8] = [
+const NEIGHBOURING_DIRECTIONS: [Point; 4] = [
     // Above
-    Point { x: -1.0, y: -1.0 },
     Point { x: 0.0, y: -1.0 },
-    Point { x: 1.0, y: -1.0 },
     // Sides
     Point { x: -1.0, y: 0.0 },
     Point { x: 1.0, y: 0.0 },
     // Below
-    Point { x: -1.0, y: 1.0 },
     Point { x: 0.0, y: 1.0 },
-    Point { x: 1.0, y: 1.0 },
 ];
 
 #[derive(Debug, Clone, Default)]
@@ -113,6 +114,7 @@ impl Universe {
         self.data.get_from_point_mut(point)
     }
 
+    #[allow(dead_code)]
     pub fn fill(&mut self, value: Element) {
         self.data.fill(value);
     }
@@ -136,23 +138,6 @@ impl Universe {
             }
         }
         (point, speed)
-    }
-
-    /// TODO: test multiple portal sets
-    pub fn in_universe_flood(&self, mut point: Point, mut field: Point) -> (Point, Point) {
-        let mut yet_to_move: Point = field;
-        loop {
-            let cross = self.portalsets[0].cross(point, field, yet_to_move);
-            if cross.is_none() {
-                return (point + field, field);
-            }
-            (point, field, yet_to_move) = cross.unwrap();
-            if yet_to_move.magnitude_2() <= 1.0 {
-                point += yet_to_move;
-                break;
-            }
-        }
-        (point, field)
     }
 
     #[allow(dead_code)]
@@ -199,11 +184,10 @@ impl Universe {
         let mut new = self.clone();
         for y in 0..new.height() {
             for x in 0..new.width() {
-                let (.., mut element) = new[(x, y)].element().unwrap();
+                let (.., element) = new[(x, y)].element_mut().unwrap();
                 let mass = element.mass.value;
                 element.mass.value = (mass - mass_min) / (mass_max - mass_min);
                 element.mass.field /= mass_field_mag_max;
-                new[(x, y)] = Region::Element(element);
             }
         }
         new

@@ -1,7 +1,22 @@
-mod types;
-use types::*;
+use simulador_de_fluxo::*;
 
-use std::{fs, process::Command};
+use std::{fs, process::Command, sync::LazyLock};
+
+use pbar::{MultiProgress, ProgressBar, ProgressStyle};
+
+static PBAR_STYLE: LazyLock<ProgressStyle> = LazyLock::new(|| {
+    ProgressStyle::default_bar()
+        .progress_chars("=>-")
+        .template(
+            "{prefix:20} [{elapsed_precise} / {eta_precise}] {bar:40.cyan/white} {pos:>7}/{len:7} {msg}",
+        )
+        .unwrap()
+});
+static mut PBARS: LazyLock<MultiProgress> = LazyLock::new(|| MultiProgress::new());
+
+fn add_pbar(pbar: ProgressBar) -> ProgressBar {
+    unsafe { (*PBARS).add(pbar) }
+}
 
 fn main() {
     //* Preparating simulation universe
@@ -9,7 +24,7 @@ fn main() {
     let mut universe = {
         const WIDTH: u32 = 540 - 1;
         const HEIGHT: u32 = 540 - 1;
-        const OBJECT_RADIUS: f64 = 4.0;
+        const OBJECT_RADIUS: f64 = 1.5;
         let mut universe = Universe::new(WIDTH, HEIGHT);
 
         let center = Point {
@@ -76,22 +91,40 @@ fn main() {
     println!("Running simulation");
     {
         let mut gravitons = gravitons::spawn(&mut universe, GRAVITON.quantity);
+        println!("Spawning {} gravitons", gravitons.len());
         universe
             .to_image()
             .save(format!("{}/{:04}.png", FOLDER, 0))
             .expect("Failed to save image");
+
+        let steps = add_pbar(
+            ProgressBar::new(GRAVITON.life_span as u64)
+                .with_style(PBAR_STYLE.clone())
+                .with_prefix("Gravitons' age"),
+        );
         for i in 0..GRAVITON.life_span {
-            println!(
-                "Step {} / {} ≃ {}%",
-                i + 1,
-                GRAVITON.life_span,
-                (i + 1) * 100 / GRAVITON.life_span
-            );
             gravitons = gravitons::advance(&mut universe, gravitons);
             universe
                 .to_image()
                 .save(format!("{}/{:04}.png", FOLDER, i + 1))
                 .expect("Failed to save image");
+            steps.inc(1);
+        }
+        steps.finish();
+        {
+            let elapsed = steps.elapsed();
+            let mut seconds = elapsed.as_secs();
+            let mut text = "Simulation took ".to_string();
+            if seconds > 3600 {
+                text += &format!("{} hour(s) ", seconds / 3600);
+                seconds %= 3600;
+            }
+            if seconds > 60 {
+                text += &format!("{} minute(s) and ", seconds / 60);
+                seconds %= 60;
+            }
+            text += &format!("{},{:03} second(s)", seconds, elapsed.subsec_millis());
+            println!("{}", text);
         }
     }
 
@@ -113,9 +146,14 @@ fn main() {
             "./output.mp4",
         ];
         cmd.args(params);
-        if cmd.output().is_err() {
-            eprintln!("Failed to join images into video");
-            println!("Run `ffmpeg {:?}` manually", params);
+        let output = cmd.output();
+
+        match output {
+            Err(err) => {
+                eprintln!("Failed to join images into video because {}", err);
+                println!("Run `ffmpeg {:?}` manually", params);
+            }
+            Ok(output) => println!("{:?}", output.stdout),
         }
     }
 }
@@ -134,14 +172,16 @@ impl ParticleParameters {
     }
 }
 
-static GRAVITON: ParticleParameters = ParticleParameters::new(512, 800);
-static SUB_GRAVITON: ParticleParameters = ParticleParameters::new(0, 100);
+static GRAVITON: ParticleParameters = ParticleParameters::new(128, 400);
+static SUB_GRAVITON: ParticleParameters = ParticleParameters::new(0, 50);
 const FOLDER: &str = "output";
 
 mod gravitons {
-    use crate::{SUB_GRAVITON, flood_add_field};
+    use pbar::{ProgressBar, ProgressIterator};
 
-    use super::types::{Particle, Point, Universe};
+    use crate::{PBAR_STYLE, SUB_GRAVITON, add_pbar, flood_add_field};
+
+    use super::{Particle, Point, Universe};
 
     use core::f64::consts::TAU;
 
@@ -166,7 +206,7 @@ mod gravitons {
                 for i in 0..ammount_per_mass_point as usize {
                     particles.push(Particle {
                         position,
-                        direction: *unsafe { directions.get_unchecked(i) },
+                        velocity: *unsafe { directions.get_unchecked(i) },
                         value: mass * inv,
                     });
                 }
@@ -177,8 +217,15 @@ mod gravitons {
 
     pub fn advance(universe: &mut Universe, mut particles: Box<[Particle]>) -> Box<[Particle]> {
         let mut fill_mask = Universe::field::<bool>(universe);
+        let len = particles.len();
+        let progress = add_pbar(
+            ProgressBar::new(len as u64)
+                .with_style(PBAR_STYLE.clone())
+                .with_prefix("Graviton index"),
+        );
         particles
             .iter_mut()
+            .progress_with(progress)
             .filter_map(|particle| {
                 particle.move_in_universe_mut(universe);
                 if !particle.position.is_inside(universe) {
@@ -237,49 +284,3 @@ fn flood_add_field(
         }
     }
 }
-
-// /// Floods "pool", starting at "start_pos" with the value "limit", and a lower value at each step, until the value is zero.
-// fn flood_until(
-//     pool: &mut (Vec<f32>, usize, usize),
-//     start_pos: (usize, usize),
-//     limit: usize,
-//     value_to_plant: f32,
-// ) {
-//     let data = &mut pool.0;
-//     let width = pool.1;
-//     // The recipients for the next level
-//     let mut stack_next: Vec<(usize, usize)> = vec![start_pos];
-//     // Which elements where filled already
-//     let mut fill_mask = vec![0; data.len()];
-
-//     for level in 0..limit {
-//         // level from "limit" to "1" ("limit" levels in total)
-//         let level = limit - level;
-
-//         // The recipients for the current level
-//         let stack = stack_next;
-//         stack_next = Vec::new();
-
-//         // For each element of the stack
-//         for (x, y) in stack {
-//             // If already filled, ignore
-//             if fill_mask[y * width + x] > 0 {
-//                 continue;
-//             }
-//             // Set fill level
-//             fill_mask[y * width + x] = level;
-//             data[y * width + x] += value_to_plant;
-//             // For each neighbour
-//             for dx in -1..=1 {
-//                 for dy in -1..=1 {
-//                     let nx = x as isize + dx;
-//                     let ny = y as isize + dy;
-//                     // If it exists
-//                     if (0..64).contains(&nx) && (0..64).contains(&ny) {
-//                         stack_next.push((nx as usize, ny as usize));
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
