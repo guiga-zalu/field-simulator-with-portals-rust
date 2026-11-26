@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 image = "0.25.9"
+palette = "0.7.6"
 pbar = "0.1.8"
 rayon = "1.11.0"
 
