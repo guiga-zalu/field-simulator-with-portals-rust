@@ -8,11 +8,11 @@ static PBAR_STYLE: LazyLock<ProgressStyle> = LazyLock::new(|| {
     ProgressStyle::default_bar()
         .progress_chars("=>-")
         .template(
-            "{prefix:20} [{elapsed_precise} / {eta_precise}] {bar:40.cyan/white} {pos:>7}/{len:7} {msg}",
+            "{prefix:20} [{elapsed_precise} / {eta_precise}] {bar:60.cyan/white} {pos:>7}/{len:7} {msg}",
         )
         .unwrap()
 });
-static mut PBARS: LazyLock<MultiProgress> = LazyLock::new(|| MultiProgress::new());
+static mut PBARS: LazyLock<MultiProgress> = LazyLock::new(MultiProgress::new);
 
 fn add_pbar(pbar: ProgressBar) -> ProgressBar {
     unsafe { (*PBARS).add(pbar) }
@@ -153,7 +153,10 @@ fn main() {
                 eprintln!("Failed to join images into video because {}", err);
                 println!("Run `ffmpeg {:?}` manually", params);
             }
-            Ok(output) => println!("{:?}", output.stdout),
+            Ok(output) => {
+                println!("stdout: {:?}", output.stdout);
+                println!("stderr: {:?}", output.stderr);
+            }
         }
     }
 }
@@ -232,11 +235,10 @@ mod gravitons {
                     return None;
                 }
                 //* spawn field
-                let mass = particle.value;
                 flood_add_field(
                     universe,
                     particle.position,
-                    mass,
+                    particle.value,
                     SUB_GRAVITON.life_span,
                     &mut fill_mask,
                 );
@@ -268,17 +270,25 @@ fn flood_add_field(
         // For each element of the stack
         for pos in stack {
             // If already filled, ignore
-            let (.., mask) = fill_mask.get_from_point_mut(pos).unwrap();
+            let (.., mask) = unsafe { fill_mask.get_from_point_unchecked_mut(pos) };
             if *mask {
                 continue;
             }
             // Set fill level
             *mask = true;
-            let (.., element) = universe.get_from_point_mut(pos).unwrap();
-            element.mass.field += (position - pos).direction() * value;
+            let delta = pos - position;
+            let delta_mag = delta.magnitude();
+            if delta_mag.is_normal() {
+                let (.., element) = unsafe { universe.get_from_point_unchecked_mut(pos) };
+                // Field recieves influence from graviton
+                // = Field grows in direction of graviton
+                // = Field grows in direction traveled
+                element.mass.field += delta * (value / delta_mag);
+            }
 
             // For each neighbour
-            for neighbour_pos in fill_mask.neighbouring_positions(pos) {
+            for neighbour_pos in universe.neighbouring_positions::<{ PortalInteraction::Wall }>(pos)
+            {
                 stack_next.push(neighbour_pos);
             }
         }

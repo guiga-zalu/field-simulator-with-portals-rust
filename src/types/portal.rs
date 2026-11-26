@@ -1,47 +1,15 @@
-use super::point::Point;
+use super::{point::Point, util::Scale};
 
-use core::ops::{Div, Mul};
+use std::marker::ConstParamTy_;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ComplexPolar {
-    pub radius: f64,
-    pub angle: f64,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PortalInteraction {
+    Cross,
+    Ignore,
+    Wall,
 }
 
-impl Mul<ComplexPolar> for ComplexPolar {
-    type Output = ComplexPolar;
-    fn mul(self, other: ComplexPolar) -> Self {
-        ComplexPolar {
-            radius: self.radius * other.radius,
-            angle: self.angle + other.angle,
-        }
-    }
-}
-impl Div<ComplexPolar> for ComplexPolar {
-    type Output = ComplexPolar;
-    fn div(self, other: ComplexPolar) -> Self {
-        ComplexPolar {
-            radius: self.radius / other.radius,
-            angle: self.angle - other.angle,
-        }
-    }
-}
-impl From<Point> for ComplexPolar {
-    fn from(value: Point) -> Self {
-        ComplexPolar {
-            radius: value.magnitude(),
-            angle: value.y.atan2(value.x),
-        }
-    }
-}
-impl From<ComplexPolar> for Point {
-    fn from(value: ComplexPolar) -> Self {
-        Point {
-            x: value.radius * value.angle.cos(),
-            y: value.radius * value.angle.sin(),
-        }
-    }
-}
+impl ConstParamTy_ for PortalInteraction {}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Portal {
@@ -50,34 +18,27 @@ pub struct Portal {
 }
 
 impl Portal {
-    pub fn new(a: Point, b: Point) -> Portal {
+    pub const fn new(a: Point, b: Point) -> Portal {
         Portal {
             point_a: a,
             point_b: b,
         }
     }
 
-    pub fn size(&self) -> f64 {
-        (self.point_b - self.point_a).magnitude()
+    pub fn scale(&self) -> Scale {
+        Scale(self.delta().magnitude())
     }
 
-    pub fn relative_position(&self, point: Point) -> Point {
-        (point - self.point_a) / (self.point_b - self.point_a)
+    pub const fn relative_position(&self, point: Point) -> Point {
+        point.const_sub(self.point_a).const_div(self.delta())
     }
-    pub fn reverted_relative_position(&self, point: Point) -> Point {
-        point * (self.point_b - self.point_a) + self.point_a
+    pub const fn reverted_relative_position(&self, point: Point) -> Point {
+        point.const_mul(self.delta()).const_add(self.point_a)
     }
 
-    // pub fn signed_distance(&self, point: Point) -> f64 {
-    //     // Portal = [Point; 2] -> line
-    //     // line -- T --> Ox
-    //     // T(point).y
-    //     self.relative_position(point).y
-    // }
-
-    pub(crate) fn into_complex_polar(self) -> ComplexPolar {
-        let delta = self.point_b - self.point_a;
-        delta.into()
+    #[inline]
+    pub const fn delta(&self) -> Point {
+        self.point_b.const_sub(self.point_a)
     }
 }
 
@@ -88,33 +49,61 @@ pub struct PortalSet {
 }
 
 impl PortalSet {
-    pub fn new(a: Portal, b: Portal) -> PortalSet {
+    pub const fn new(a: Portal, b: Portal) -> PortalSet {
         PortalSet { a, b }
     }
 
-    #[allow(dead_code)]
-    pub fn sizes(&self) -> [f64; 2] {
-        [self.a.size(), self.b.size()]
-    }
-
-    pub fn relative_positions(&self, point: Point) -> [Point; 2] {
+    pub const fn relative_positions(&self, point: Point) -> [Point; 2] {
         [
             self.a.relative_position(point),
             self.b.relative_position(point),
         ]
     }
 
-    // pub fn signed_distances(&self, point: Point) -> [f64; 2] {
-    //     [self.a.signed_distance(point), self.b.signed_distance(point)]
-    // }
+    pub fn cross_part_1(&self, point: Point, movement: Point) -> Option<[(Portal, Point); 2]> {
+        let [before_a, before_b] = self.relative_positions(point);
+        let [after_a, after_b] = self.relative_positions(point + movement);
+        // ! Non const
+        let scale_a = self.a.scale();
+        // ! Non const
+        let scale_b = self.b.scale();
+        /*
+         * distance_A = if is crossing A { before_a.y * cmp_a.radius } else { None }
+         * distance_B = if is crossing B { before_b.y * cmp_b.radius } else { None }
+         * if distance_A.abs() > distance_B.abs() { (a, b) } else { (b, a) }
+         */
+        let distance_a = if before_a.y * after_a.y < 0.0 {
+            Some(before_a.y * scale_a.0)
+        } else {
+            None
+        };
+        let distance_b = if before_b.y * after_b.y < 0.0 {
+            Some(before_b.y * scale_b.0)
+        } else {
+            None
+        };
+        Some(match (distance_a, distance_b) {
+            (None, None) => return None,
+            (Some(_), None) => [(self.a, before_a), (self.b, after_b)],
+            (None, Some(_)) => [(self.b, before_b), (self.a, after_a)],
+            (Some(distance_a), Some(distance_b)) => {
+                if distance_a.abs() < distance_b.abs() {
+                    [(self.a, before_a), (self.b, after_b)]
+                } else {
+                    [(self.b, before_b), (self.a, after_a)]
+                }
+            }
+        })
+    }
 
     /// https://en.wikipedia.org/wiki/Line%E2%80%93line_intersection#Given_two_points_on_each_line
-    pub fn cross(
+    pub const fn cross_part_2(
         &self,
-        point: Point,
         speed: Point,
-        movement: Point,
+        crossing: [(Portal, Point); 2],
     ) -> Option<(Point, Point, Point)> {
+        let [(being_crossed, before), (exiting, after)] = crossing;
+        //* {space = entry portal}
         /*
         (x1, y1) := (0, 0)
         (x2, y2) := (1, 0)
@@ -134,57 +123,19 @@ impl PortalSet {
         = [ Bx Ay - By Ax ] / [ Ay - By ]
         */
 
-        let (being_crossed, exiting): (Portal, Portal) = {
-            let [before_a, before_b] = self.relative_positions(point);
-            let [after_a, after_b] = self.relative_positions(point + movement);
-            let cmp_a = self.a.into_complex_polar();
-            let cmp_b = self.b.into_complex_polar();
-            /*
-             * distance_A = if is crossing A { before_a.y * cmp_a.radius } else { None }
-             * distance_B = if is crossing B { before_b.y * cmp_b.radius } else { None }
-             * if distance_A.abs() > distance_B.abs() { (a, b) } else { (b, a) }
-             */
-            let distance_a = if before_a.y * after_a.y < 0.0 {
-                Some(before_a.y * cmp_a.radius)
-            } else {
-                None
-            };
-            let distance_b = if before_b.y * after_b.y < 0.0 {
-                Some(before_b.y * cmp_b.radius)
-            } else {
-                None
-            };
-            match (distance_a, distance_b) {
-                (None, None) => return None,
-                (Some(_), None) => (self.a, self.b),
-                (None, Some(_)) => (self.b, self.a),
-                (Some(distance_a), Some(distance_b)) => {
-                    if distance_a.abs() < distance_b.abs() {
-                        (self.a, self.b)
-                    } else {
-                        (self.b, self.a)
-                    }
-                }
-            }
-        };
-
-        //* {space = entry portal}
-        let before = being_crossed.relative_position(point);
-        let after = being_crossed.relative_position(point + movement);
         let x = (before.x * after.y - before.y * after.x) / (after.y - before.y);
         // We want x in [0; 1]
-        if !(0.0..1.0).contains(&x) {
+        if 0.0 <= x && x <= 1.0 {
             // Not being crossed.
             return None;
         }
         let crossing_point = Point::by_x(x);
-        let yet_to_move = after - crossing_point;
+        let yet_to_move = after.const_sub(crossing_point);
 
         //* {space = real space}
         let reprojected = exiting.reverted_relative_position(crossing_point);
-        let projection_entry_to_exit =
-            (exiting.point_b - exiting.point_a) / (being_crossed.point_b - being_crossed.point_a);
-        let speed = speed * projection_entry_to_exit;
+        let projection_entry_to_exit = exiting.delta().const_div(being_crossed.delta());
+        let speed = speed.const_mul(projection_entry_to_exit);
         // {space = entry portal}
         // remaining := after - crossing point
         let yet_to_move = exiting.reverted_relative_position(yet_to_move);

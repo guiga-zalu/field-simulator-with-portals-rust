@@ -1,4 +1,4 @@
-pub struct Scale(pub f64);
+use super::util::Scale;
 
 #[derive(Debug, Clone)]
 pub enum Region<T>

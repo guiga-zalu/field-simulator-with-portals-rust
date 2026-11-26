@@ -15,11 +15,11 @@ impl Point {
         Point { x: 0.0, y: 0.0 }
     }
 
-    pub fn by_x(x: f64) -> Point {
+    pub const fn by_x(x: f64) -> Point {
         Point { x, y: 0.0 }
     }
 
-    pub fn by_y(y: f64) -> Point {
+    pub const fn by_y(y: f64) -> Point {
         Point { x: 0.0, y }
     }
 
@@ -30,21 +30,64 @@ impl Point {
         }
     }
 
+    pub fn into_angle(self) -> f64 {
+        self.y.atan2(self.x)
+    }
+
+    pub fn into_angle_percentage(self) -> f64 {
+        let angle = self.into_angle() / std::f64::consts::TAU;
+        if angle.is_sign_negative() {
+            angle + 1.0
+        } else {
+            angle
+        }
+    }
+
     pub fn magnitude(&self) -> f64 {
         self.x.hypot(self.y)
     }
-    pub fn magnitude_2(&self) -> f64 {
-        self.x.powi(2) + self.y.powi(2)
+    pub const fn magnitude_2(&self) -> f64 {
+        (self.x * self.x) + (self.y * self.y)
     }
     pub fn direction(&self) -> Point {
         self / self.magnitude()
     }
 
-    pub fn inv(&self) -> Point {
+    pub const fn inv(&self) -> Point {
+        let _mag2 = 1.0 / self.magnitude_2();
         Point {
-            x: self.x,
-            y: -self.y,
-        } / self.magnitude_2()
+            x: self.x * _mag2,
+            y: -self.y * _mag2,
+        }
+    }
+}
+
+impl Point {
+    pub const fn const_add(self, other: Point) -> Point {
+        Point {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+    pub const fn const_sub(self, other: Point) -> Point {
+        Point {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        }
+    }
+    pub const fn const_mul(self, other: Point) -> Point {
+        Point {
+            x: self.x * other.x - self.y * other.y,
+            y: self.x * other.y + self.y * other.x,
+        }
+    }
+    pub const fn const_div(self, other: Point) -> Point {
+        self.const_mul(other.inv())
+    }
+
+    pub const fn const_add_assign(&mut self, other: Point) {
+        self.x += other.x;
+        self.y += other.y;
     }
 }
 
@@ -72,20 +115,14 @@ impl Add for Point {
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
-        Point {
-            x: self.x + other.x,
-            y: self.y + other.y,
-        }
+        self.const_add(other)
     }
 }
 impl Sub for Point {
     type Output = Self;
 
     fn sub(self, other: Self) -> Self {
-        Point {
-            x: self.x - other.x,
-            y: self.y - other.y,
-        }
+        self.const_sub(other)
     }
 }
 impl Mul<f64> for Point {
@@ -112,17 +149,14 @@ impl Mul<Point> for Point {
     type Output = Point;
 
     fn mul(self, other: Point) -> Point {
-        Point {
-            x: self.x * other.x - self.y * other.y,
-            y: self.x * other.y + self.y * other.x,
-        }
+        self.const_mul(other)
     }
 }
 impl Div<Point> for Point {
     type Output = Point;
 
     fn div(self, other: Point) -> Point {
-        self * other.inv()
+        self.const_div(other)
     }
 }
 impl Add for &Point {
@@ -169,23 +203,19 @@ impl Mul<Point> for &Point {
     type Output = Point;
 
     fn mul(self, other: Point) -> Point {
-        Point {
-            x: self.x * other.x - self.y * other.y,
-            y: self.x * other.y + self.y * other.x,
-        }
+        self.const_mul(other)
     }
 }
 impl Div<Point> for &Point {
     type Output = Point;
 
     fn div(self, other: Point) -> Point {
-        self * other.inv()
+        self.const_div(other)
     }
 }
 impl AddAssign for Point {
     fn add_assign(&mut self, other: Self) {
-        self.x += other.x;
-        self.y += other.y;
+        self.const_add_assign(other);
     }
 }
 impl SubAssign for Point {
@@ -202,8 +232,8 @@ impl MulAssign<f64> for Point {
 }
 impl DivAssign<f64> for Point {
     fn div_assign(&mut self, other: f64) {
-        self.x /= other;
-        self.y /= other;
+        let _other = 1.0 / other;
+        *self *= _other;
     }
 }
 

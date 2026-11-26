@@ -1,30 +1,24 @@
 use super::{
-    Element,
     point::Point,
-    portal::PortalSet,
-    region::{Region, Regions, Scale},
+    portal::{PortalInteraction, PortalSet},
+    region::{Region, Regions},
+    util::{Element, Scale},
 };
 
 use std::ops::{Index, IndexMut};
 
-use colorgrad::Gradient;
+// use colorgrad::Gradient;
 use image::{DynamicImage, ImageBuffer, Rgb};
 use rayon::prelude::*;
 
 #[derive(Debug, Clone, Default)]
-pub struct UniverseData<T>
-where
-    T: Copy,
-{
+pub struct UniverseData<T: Copy> {
     pub width: u32,
     pub height: u32,
     pub regions: Regions<T>,
 }
 
-impl<T> UniverseData<T>
-where
-    T: Copy,
-{
+impl<T: Copy> UniverseData<T> {
     pub fn get_from_point(&self, point: Point) -> Option<(Scale, T)> {
         if !point.is_inside(self) {
             return None;
@@ -41,6 +35,20 @@ where
         self.regions[index].element_mut()
     }
 
+    pub unsafe fn get_from_point_unchecked(&self, point: Point) -> (Scale, T) {
+        let index = (point.y as u32 * self.width + point.x as u32) as usize;
+        unsafe { self.regions.get_unchecked(index) }
+            .element()
+            .unwrap()
+    }
+
+    pub unsafe fn get_from_point_unchecked_mut(&mut self, point: Point) -> (Scale, &mut T) {
+        let index = (point.y as u32 * self.width + point.x as u32) as usize;
+        unsafe { self.regions.get_unchecked_mut(index) }
+            .element_mut()
+            .unwrap()
+    }
+
     pub fn fill(&mut self, value: T) {
         for region in self.regions.iter_mut() {
             match region {
@@ -50,13 +58,30 @@ where
         }
     }
 
+    #[allow(dead_code)]
+    pub fn neighbouring_directions(&self, point: Point) -> Vec<Point> {
+        if let Some((scale, _)) = self.get_from_point(point) {
+            let mut positions = Vec::new();
+            for direction in NEIGHBOURING_DIRECTIONS {
+                let direction = direction * scale.0;
+                if (point + direction).is_inside(self) {
+                    positions.push(direction);
+                }
+            }
+            positions
+        } else {
+            Vec::new()
+        }
+    }
+
+    #[allow(dead_code)]
     pub fn neighbouring_positions(&self, point: Point) -> Vec<Point> {
         if let Some((scale, _)) = self.get_from_point(point) {
             let mut positions = Vec::new();
-            for direction in NEIGHBOURING_DIRECTIONS.iter() {
-                let direction = point + *direction * scale.0;
-                if direction.is_inside(self) {
-                    positions.push(direction);
+            for direction in NEIGHBOURING_DIRECTIONS {
+                let neighbour = point + direction * scale.0;
+                if neighbour.is_inside(self) {
+                    positions.push(neighbour);
                 }
             }
             positions
@@ -115,6 +140,16 @@ impl Universe {
     }
 
     #[allow(dead_code)]
+    pub unsafe fn get_from_point_unchecked(&self, point: Point) -> (Scale, Element) {
+        unsafe { self.data.get_from_point_unchecked(point) }
+    }
+
+    #[allow(dead_code)]
+    pub unsafe fn get_from_point_unchecked_mut(&mut self, point: Point) -> (Scale, &mut Element) {
+        unsafe { self.data.get_from_point_unchecked_mut(point) }
+    }
+
+    #[allow(dead_code)]
     pub fn fill(&mut self, value: Element) {
         self.data.fill(value);
     }
@@ -124,16 +159,28 @@ impl Universe {
     }
 
     /// TODO: test multiple portal sets
+    pub fn crosses_portal(&self, point: Point, speed: Point) -> bool {
+        self.portalsets
+            .iter()
+            .any(|ps| ps.cross_part_1(point, speed).is_some())
+    }
+
+    /// TODO: test multiple portal sets
     pub fn in_universe_move(&self, mut point: Point, mut speed: Point) -> (Point, Point) {
         let mut yet_to_move: Point = speed;
         loop {
-            let cross = self.portalsets[0].cross(point, speed, yet_to_move);
+            // ! Non const
+            let crossing = self.portalsets[0].cross_part_1(point, yet_to_move);
+            if crossing.is_none() {
+                return (point + speed, speed);
+            }
+            let cross = self.portalsets[0].cross_part_2(speed, crossing.unwrap());
             if cross.is_none() {
                 return (point + speed, speed);
             }
             (point, speed, yet_to_move) = cross.unwrap();
             if yet_to_move.magnitude_2() <= 1.0 {
-                point += yet_to_move;
+                point.const_add_assign(yet_to_move);
                 break;
             }
         }
@@ -150,8 +197,77 @@ impl Universe {
         }
         universe
     }
+
+    pub fn neighbouring_positions<const INTERACTION: PortalInteraction>(
+        &self,
+        point: Point,
+    ) -> Vec<Point> {
+        match INTERACTION {
+            PortalInteraction::Cross => self
+                .data
+                .neighbouring_directions(point)
+                .iter()
+                .filter_map(|&neighbour| {
+                    let (pos, speed) = self.in_universe_move(point, neighbour);
+                    if !pos.is_inside(self) {
+                        None
+                    } else {
+                        let scale = speed.magnitude() / neighbour.magnitude();
+                        Some(pos * scale)
+                    }
+                })
+                .collect(),
+            PortalInteraction::Wall => self
+                .data
+                .neighbouring_directions(point)
+                .iter()
+                .filter_map(|&neighbour| {
+                    if self.crosses_portal(point, neighbour) {
+                        None
+                    } else {
+                        let pos = point + neighbour;
+                        if !pos.is_inside(self) {
+                            None
+                        } else {
+                            Some(pos)
+                        }
+                    }
+                })
+                .collect(),
+            PortalInteraction::Ignore => self
+                .data
+                .neighbouring_directions(point)
+                .iter()
+                .filter_map(|&neighbour| {
+                    let pos = point + neighbour;
+                    if !pos.is_inside(self) {
+                        None
+                    } else {
+                        Some(pos)
+                    }
+                })
+                .collect(),
+        }
+    }
 }
 
+impl<T> Index<(u32, u32)> for UniverseData<T>
+where
+    T: Copy,
+{
+    type Output = Region<T>;
+    fn index(&self, (x, y): (u32, u32)) -> &Region<T> {
+        &self.regions[(x + y * self.width) as usize]
+    }
+}
+impl<T> IndexMut<(u32, u32)> for UniverseData<T>
+where
+    T: Copy,
+{
+    fn index_mut(&mut self, (x, y): (u32, u32)) -> &mut Region<T> {
+        &mut self.regions[(x + y * self.width) as usize]
+    }
+}
 impl Index<(u32, u32)> for Universe {
     type Output = Region<Element>;
     fn index(&self, (x, y): (u32, u32)) -> &Region<Element> {
@@ -219,27 +335,49 @@ impl Universe {
             );
             draw_line(&mut img, b.point_a + plus, b.point_b + plus, PORTAL_COLOUR);
         }
+
         //* Draw field(s)
-        let gradient = colorgrad::preset::viridis();
+        // let gradient = colorgrad::preset::viridis();
         img.par_enumerate_pixels_mut().for_each(|(x, y, pixel)| {
             let (.., element) = universe[(x, y)].element().unwrap();
-            let field = element.mass.field;
-            let mag = field.magnitude();
 
-            let [r, g, b, ..] = gradient.at(mag as f32).to_rgba8();
+            // let field = element.mass.field;
+            // let mag = field.magnitude();
+            // let [r, g, b, ..] = gradient.at(mag as f32).to_rgba8();
+
+            let rgb = polar_point_to_rgb(element.mass.field);
 
             if *pixel == PORTAL_COLOUR {
+                let [r, g, b] = rgb;
                 *pixel = Rgb([
                     ((r as f64 + pixel.0[0] as f64) * 0.5) as u8,
                     ((g as f64 + pixel.0[1] as f64) * 0.5) as u8,
                     ((b as f64 + pixel.0[2] as f64) * 0.5) as u8,
                 ]);
             } else {
-                *pixel = Rgb([r, g, b]);
+                *pixel = Rgb(rgb);
             }
         });
         DynamicImage::ImageRgb8(img)
     }
+}
+
+fn polar_point_to_rgb(point: Point) -> [u8; 3] {
+    use palette::{
+        FromColor,
+        // oklch::Oklch,
+        hsluv::Hsluv,
+        rgb::{LinSrgb, Srgb},
+    };
+    // let colour = Oklch::<f64>::new(point.magnitude(), 1.0, point.into_angle_percentage());
+    let colour = Hsluv::new(
+        point.into_angle() as f32,
+        100.0,
+        80.0 * point.magnitude() as f32,
+    );
+    let rgb = LinSrgb::<f32>::from_color(colour);
+    let rgb = Srgb::<u8>::from_linear(rgb);
+    rgb.into()
 }
 
 use core::ops::{Deref, DerefMut};
@@ -353,10 +491,7 @@ fn draw_line_high<Pixel: image::Pixel, Container: Deref<Target = [Pixel::Subpixe
 }
 
 impl Universe {
-    pub fn field<T>(universe: &Self) -> UniverseData<T>
-    where
-        T: Copy + Default,
-    {
+    pub fn field<T: Copy + Default>(universe: &Self) -> UniverseData<T> {
         let original = &universe.data;
         let mut regions = Vec::new();
         for region in &original.regions {
@@ -372,5 +507,61 @@ impl Universe {
             height: original.height,
             regions,
         }
+    }
+
+    #[inline]
+    pub fn iter_elements<'a>(&'a self) -> UniverseDataIterator<'a, Element> {
+        self.data.into_iter()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UniverseDataIterator<'a, T: Copy> {
+    universe: &'a UniverseData<T>,
+    position: Point,
+    indexes: Vec<usize>,
+}
+
+impl<'a, T> IntoIterator for &'a UniverseData<T>
+where
+    T: Copy,
+{
+    type Item = (Point, (Scale, T));
+    type IntoIter = UniverseDataIterator<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        UniverseDataIterator {
+            universe: self,
+            position: Default::default(),
+            indexes: vec![0],
+        }
+    }
+}
+
+impl<'a, T> Iterator for UniverseDataIterator<'a, T>
+where
+    T: Copy,
+{
+    type Item = (Point, (Scale, T));
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let point = self.position;
+        // Get element
+        let mut local = &self.universe.regions;
+        if unsafe { self.indexes.get_unchecked(0) } == &local.len() {
+            return None;
+        }
+        for index in self.indexes.iter() {}
+        let element = self.universe[(point.x as u32, point.y as u32)]
+            .element()
+            .unwrap();
+        // Update position
+        self.position.x += 1.0;
+        if self.position.x.ceil() as u32 == self.universe.width {
+            self.position.x = 0.0;
+            self.position.y += 1.0;
+        }
+        // Return
+        Some((point, element))
     }
 }
