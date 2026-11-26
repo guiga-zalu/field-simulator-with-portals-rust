@@ -3,3 +3,7 @@
 /videos
 *.webm
 *.mp4
+
+# Keep some videos
+!output.mp4
+!2 masses.mp4
